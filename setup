@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# sugar-flow setup — build, then symlink generated artifacts into
+# ~/.claude/commands/ (slash commands) AND ~/.claude/skills/ (skills).
+#
+# Usage:
+#   ./setup            # build + install both
+#   ./setup --build    # build only (no install)
+#   ./setup --uninstall  # remove sf-* from both target dirs
+
+set -euo pipefail
+
+cd "$(dirname "$0")"
+ROOT="$PWD"
+DIST="$ROOT/dist"
+CMD_SRC="$DIST/commands"
+SKILL_SRC="$DIST/skills"
+CMD_TARGET="$HOME/.claude/commands"
+SKILL_TARGET="$HOME/.claude/skills"
+
+build() {
+  if ! command -v bun >/dev/null 2>&1; then
+    echo "error: bun is not installed. Install it from https://bun.sh" >&2
+    exit 1
+  fi
+  echo "==> building commands + skills"
+  bun "$ROOT/scripts/gen-commands.ts"
+}
+
+install() {
+  mkdir -p "$CMD_TARGET" "$SKILL_TARGET"
+  local count=0
+
+  echo "==> installing slash commands to $CMD_TARGET"
+  for file in "$CMD_SRC"/sf-*.md; do
+    [ -e "$file" ] || continue
+    local name
+    name=$(basename "$file")
+    ln -sfn "$file" "$CMD_TARGET/$name"
+    echo "  linked $name"
+    count=$((count + 1))
+  done
+
+  echo "==> installing skills to $SKILL_TARGET"
+  for dir in "$SKILL_SRC"/sf-*; do
+    [ -d "$dir" ] || continue
+    local name
+    name=$(basename "$dir")
+    ln -sfn "$dir" "$SKILL_TARGET/$name"
+    echo "  linked $name/"
+    count=$((count + 1))
+  done
+
+  echo "==> installed $count artifact(s)"
+  echo ""
+  echo "try: /sf-idea  /sf-plan  /sf-review  (or let Claude auto-invoke them)"
+}
+
+uninstall() {
+  local count=0
+  echo "==> removing sf-* from $CMD_TARGET"
+  for file in "$CMD_TARGET"/sf-*.md; do
+    [ -e "$file" ] || [ -L "$file" ] || continue
+    rm -f "$file"
+    echo "  removed commands/$(basename "$file")"
+    count=$((count + 1))
+  done
+  echo "==> removing sf-* from $SKILL_TARGET"
+  for entry in "$SKILL_TARGET"/sf-*; do
+    [ -e "$entry" ] || [ -L "$entry" ] || continue
+    rm -rf "$entry"
+    echo "  removed skills/$(basename "$entry")"
+    count=$((count + 1))
+  done
+  echo "==> removed $count artifact(s)"
+}
+
+case "${1:-install}" in
+  --build|build)
+    build
+    ;;
+  --uninstall|uninstall)
+    uninstall
+    ;;
+  --install|install|"")
+    build
+    install
+    ;;
+  *)
+    echo "usage: $0 [--build | --install | --uninstall]" >&2
+    exit 1
+    ;;
+esac

@@ -1,0 +1,170 @@
+# sugar-flow
+
+Personal development flow for Claude Code. Takes the quintessence of
+[gstack](https://github.com/garrytan/gstack) (critique skills, voice,
+ship discipline) and [OpenSpec](https://github.com/Fission-AI/OpenSpec)
+(delta specs, tasks.md, archive merge). Standalone — no external
+dependencies beyond `bun` for the build script.
+
+Five slash commands, no telemetry, no framework, no plugin system. Edit
+the prose when something doesn't fit.
+
+## The flow
+
+```
+idea      →  /sf-idea      sugar/ideas/<slug>.md one-pager
+plan      →  /sf-plan      sugar/changes/<name>/ with proposal, design,
+                            delta specs, tasks.md
+build     →  /sf-build     execute tasks.md top-to-bottom, check off boxes
+review    →  /sf-review    pre-merge audit: hazards + taste + spec
+                            completeness + task completeness
+merge     →  (manual)      you commit, push, merge yourself
+archive   →  /sf-archive   merge delta specs into sugar/specs/,
+                            move change to sugar/changes/archive/
+```
+
+## The sugar/ directory
+
+Sugar-flow tracks work in a single top-level `sugar/` directory per repo:
+
+```
+sugar/
+├── ideas/<slug>.md                  # /sf-idea output (pre-plan)
+├── specs/<capability>/spec.md       # long-lived, source of truth
+└── changes/
+    ├── <change-name>/               # active
+    │   ├── proposal.md              # why
+    │   ├── design.md                # how
+    │   ├── tasks.md                 # numbered checkbox list
+    │   └── specs/
+    │       └── <capability>/spec.md # delta: ADDED/MODIFIED/REMOVED
+    └── archive/<YYYY-MM-DD>-<change-name>/
+```
+
+Long-lived capability specs are the source of truth for what the system
+does today. Each change writes delta specs with `ADDED`, `MODIFIED`, and
+`REMOVED` requirements; `/sf-archive` merges those deltas back into the
+capability specs at the end.
+
+## Install
+
+```bash
+cd /Users/mac/Documents/sugar-flow
+./setup
+```
+
+Each template builds into **two artifacts** that share the same body:
+
+- **Slash command** at `~/.claude/commands/sf-<name>.md` — you type
+  `/sf-idea` explicitly.
+- **Skill** at `~/.claude/skills/sf-<name>/SKILL.md` — Claude can
+  auto-invoke when your message matches the description.
+
+Both are symlinks back into `dist/`, so edit any `.tmpl` or preamble
+file, re-run `./setup`, and changes are live immediately.
+
+Requires `bun` (for the ~70-line build script).
+
+## The five commands
+
+### `/sf-idea`
+Pressure-tests a raw idea with 5–10 framing questions, writes a one-pager
+to `sugar/ideas/<slug>.md`. Stops.
+
+### `/sf-plan`
+Reads the one-pager, runs interactive eng review (data flow, interfaces,
+edge cases, test plan, perf), prompts you to pick affected capabilities
+(prevents drift — you confirm each new capability before it's created),
+then generates the full change directory: `proposal.md`, `design.md`,
+`tasks.md`, and delta specs under `specs/<capability>/spec.md` with
+`ADDED`/`MODIFIED`/`REMOVED` requirement blocks.
+
+### `/sf-build`
+Executes `tasks.md` top-to-bottom. For each unchecked task, writes code
+and marks the checkbox `[x]` on completion. Resumable — if a session is
+interrupted, re-invoke and it skips already-checked tasks. One task at a
+time; doesn't batch-check.
+
+### `/sf-review`
+Four-pass audit on the diff against the base branch:
+- **Correctness hazards** — SQL injection, auth bypass, races, missing
+  boundary checks.
+- **Taste + dead code** — over-engineering, AI slop, unused code.
+- **Spec completeness** — every `ADDED` requirement has implementing
+  code; every `MODIFIED` has updated code; every `REMOVED` has code
+  actually removed.
+- **Task completeness** — every `[x]` task has matching changes in the
+  diff.
+
+Reports findings with `file:line` or `spec:requirement` references.
+Does not auto-fix.
+
+### `/sf-archive`
+After merge. Merges the change's delta specs into
+`sugar/specs/<capability>/spec.md` (REMOVED → MODIFIED → ADDED, in that
+order). Moves `sugar/changes/<name>/` to
+`sugar/changes/archive/<YYYY-MM-DD>-<name>/` as the historical record.
+Refuses to run with invalid delta specs or unchecked tasks (asks
+explicitly).
+
+## Project context
+
+Sugar-flow reads `CLAUDE.md` at the repo root (if present) for tech
+stack, conventions, and patterns. Those inform how specs, tasks, and
+code are written. There's no sugar-specific config file — CLAUDE.md is
+the one source.
+
+## Layout
+
+```
+sugar-flow/
+├── commands/                    # sources (edit these)
+│   ├── sf-idea.md.tmpl
+│   ├── sf-plan.md.tmpl
+│   ├── sf-build.md.tmpl
+│   ├── sf-review.md.tmpl
+│   └── sf-archive.md.tmpl
+├── preamble/                    # shared sections (edit these)
+│   ├── ask-user-format.md
+│   ├── sugar-model.md           # delta spec + tasks.md + archive format
+│   └── root-cause-discipline.md
+├── scripts/
+│   └── gen-commands.ts          # stitcher + dual-artifact emitter
+├── dist/                        # generated (don't edit)
+│   ├── commands/sf-*.md         # slash-command variant
+│   └── skills/sf-*/SKILL.md     # skill variant (with name: frontmatter)
+├── setup                        # build + symlink both variants
+└── README.md
+```
+
+Same body, two frontmatter shells. Command variant keeps only
+`description:`; skill variant adds `name:` so Claude can match it by
+description during auto-invocation.
+
+## Customizing
+
+**Change how questions are asked:** edit `preamble/ask-user-format.md`.
+Affects all five commands.
+
+**Change the change model** (directory shape, delta format, tasks
+format, archive behavior): edit `preamble/sugar-model.md`. This is the
+load-bearing file — read it before changing anything.
+
+**Change a command's behavior:** edit the `.tmpl` file directly. These
+are prompts Claude reads — write them in clear prose.
+
+**Add a new shared section:** drop `preamble/<name>.md`, reference it
+from any template with `{{PREAMBLE:<name>}}`, re-run `./setup`.
+
+**Remove a command:** delete the `.tmpl` file and run `./setup
+--uninstall` then `./setup`.
+
+## What this is NOT
+
+- Not a framework. No plugins, no hooks, no event system.
+- Not a wrapper. Sugar-flow is standalone — it doesn't shell out to any
+  external CLI. The only runtime dependency is Claude Code itself.
+- Not trying to be gstack or OpenSpec. Both inspired it; neither owns it.
+  Sugar-flow is five files of prose that match one person's flow.
+- Not a team tool. It's personal. Fork it, rename commands, rewrite
+  prose — that's the point.
