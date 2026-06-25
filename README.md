@@ -6,7 +6,7 @@ ship discipline) and [OpenSpec](https://github.com/Fission-AI/OpenSpec)
 (delta specs, tasks.md, archive merge). Standalone — no external
 dependencies beyond `bun` for the build script.
 
-Five slash commands, no telemetry, no framework, no plugin system. Edit
+Seven slash commands, no telemetry, no framework, no plugin system. Edit
 the prose when something doesn't fit.
 
 ## The flow
@@ -22,6 +22,21 @@ merge     →  (manual)      you commit, push, merge yourself
 archive   →  /sf-archive   merge delta specs into sugar/specs/,
                             move change to sugar/changes/archive/
 ```
+
+When you have several independent changes queued, fan them out instead of
+building one at a time:
+
+```
+parallel  →  /sf-parallel  dispatch one background build agent per change,
+                            each in its own git worktree; writes a run ledger
+converge  →  /sf-converge   merge the worktree branches back in order, stop
+                            on conflict; then /sf-review the combined diff
+```
+
+`/sf-parallel` slots between `/sf-plan` and `/sf-build`: it replaces N
+sequential builds with N concurrent ones. `/sf-converge` replaces the manual
+merge step for that run. Both are optional — a single change still goes
+straight through `/sf-build`.
 
 ## The sugar/ directory
 
@@ -65,7 +80,7 @@ file, re-run `./setup`, and changes are live immediately.
 
 Requires `bun` (for the ~70-line build script).
 
-## The five commands
+## The commands
 
 ### `/sf-idea`
 Pressure-tests a raw idea with 5–10 framing questions, writes a one-pager
@@ -84,6 +99,24 @@ Executes `tasks.md` top-to-bottom. For each unchecked task, writes code
 and marks the checkbox `[x]` on completion. Resumable — if a session is
 interrupted, re-invoke and it skips already-checked tasks. One task at a
 time; doesn't batch-check.
+
+### `/sf-parallel`
+For running several independent changes at once. Selects the changes (named or
+picked interactively), checks for **capability overlap** — two changes touching
+the same `sugar/specs/<capability>/` are flagged as a collision risk and gated
+behind a confirm — then dispatches one background build agent per change, each
+in its own git worktree. Writes a run ledger to `sugar/changes/.parallel-run.md`
+mapping change → worktree branch → suggested merge order. Does not merge; you
+run `/sf-converge` once the agents report in.
+
+### `/sf-converge`
+Reconciles a `/sf-parallel` run. Reads the ledger, confirms each agent
+finished, then merges the worktree branches into the base branch **one at a
+time in dependency order** with `--no-ff`. Stops on the first conflict, surfaces
+it with `file:line`, and asks how to proceed (resolve with guidance / abort this
+one / stop) — never picks a side on its own. Verifies each merged change's
+tasks.md is fully checked; flags any that landed incomplete. Points at
+`/sf-review` for the combined diff. Does not push or archive.
 
 ### `/sf-review`
 Four-pass audit on the diff against the base branch:
@@ -122,6 +155,8 @@ sugar-flow/
 │   ├── sf-idea.md.tmpl
 │   ├── sf-plan.md.tmpl
 │   ├── sf-build.md.tmpl
+│   ├── sf-parallel.md.tmpl
+│   ├── sf-converge.md.tmpl
 │   ├── sf-review.md.tmpl
 │   └── sf-archive.md.tmpl
 ├── preamble/                    # shared sections (edit these)
@@ -144,7 +179,7 @@ description during auto-invocation.
 ## Customizing
 
 **Change how questions are asked:** edit `preamble/ask-user-format.md`.
-Affects all five commands.
+Affects all seven commands.
 
 **Change the change model** (directory shape, delta format, tasks
 format, archive behavior): edit `preamble/sugar-model.md`. This is the
@@ -165,6 +200,6 @@ from any template with `{{PREAMBLE:<name>}}`, re-run `./setup`.
 - Not a wrapper. Sugar-flow is standalone — it doesn't shell out to any
   external CLI. The only runtime dependency is Claude Code itself.
 - Not trying to be gstack or OpenSpec. Both inspired it; neither owns it.
-  Sugar-flow is five files of prose that match one person's flow.
+  Sugar-flow is a handful of files of prose that match one person's flow.
 - Not a team tool. It's personal. Fork it, rename commands, rewrite
   prose — that's the point.

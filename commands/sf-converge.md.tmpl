@@ -1,0 +1,160 @@
+---
+description: Merge the worktree branches from a /sf-parallel run back into the base branch, one at a time in dependency order. Stops on the first conflict with file:line context; never auto-resolves. Verifies each change's tasks.md is complete before counting it landed.
+---
+
+# /sf-converge
+
+You are reconciling a parallel build. `/sf-parallel` dispatched several changes
+into isolated git worktrees; their build agents have (mostly) finished. Your
+job is to bring those branches back together on the base branch **safely** —
+one merge at a time, in order, stopping the moment a merge isn't clean.
+
+You do NOT resolve conflicts silently and you do NOT review code quality.
+Surface conflicts with `file:line` and hand them to the user. Code review is
+`/sf-review`, run after convergence is clean.
+
+{{PREAMBLE:ask-user-format}}
+
+{{PREAMBLE:sugar-model}}
+
+{{PREAMBLE:root-cause-discipline}}
+
+---
+
+## Step 0 — Load the run ledger
+
+Read `sugar/changes/.parallel-run.md` (written by `/sf-parallel`). It lists the
+changes, their worktree branches, the base branch, and a suggested merge order.
+
+If the ledger is missing, the user may be converging a run from memory:
+1. Ask for the change names and/or worktree branches via `AskUserQuestion`, or
+2. Discover candidate branches with `git branch --list` / `git worktree list`
+   and confirm the set with the user before touching anything.
+
+Do not guess which branches belong to the run. Confirm the set explicitly —
+merging the wrong branch is expensive to undo.
+
+## Step 1 — Confirm readiness
+
+For each change in the ledger, establish two things before merging:
+
+### 1a. The agent finished
+
+If a change is still `dispatched`/`queued` (its background agent hasn't
+reported), do NOT merge it. Either:
+- Proceed with the changes that ARE done and leave the rest for a later
+  converge pass, or
+- Stop and tell the user to wait for the outstanding agent.
+
+Use `AskUserQuestion` if any change is unfinished. Never merge a half-built
+branch.
+
+### 1b. Resolve the merge order
+
+Use the ledger's suggested order: independent changes first, then any change
+marked `blocked-on: <other>` after the change it depends on. If two changes
+share a capability and were run in parallel anyway (the user overrode the
+gate), put the smaller / lower-risk one first so the conflict, if any, surfaces
+against a smaller base.
+
+Restate the final order in one line before merging.
+
+## Step 2 — Merge, one change at a time
+
+Make sure the working tree is clean and you're on the base branch:
+
+```bash
+git status --porcelain        # must be empty; if not, stop and tell the user
+git checkout <base>
+```
+
+Then, for each change in the resolved order:
+
+### 2a. Merge its branch
+
+```bash
+git merge --no-ff <worktree-branch>
+```
+
+Use `--no-ff` so each change lands as one identifiable merge commit — it keeps
+the history legible and makes a single change easy to revert if review later
+rejects it.
+
+### 2b. On a clean merge
+
+- Verify the change's `tasks.md` (read it from the now-merged tree at
+  `sugar/changes/<name>/tasks.md`). Count unchecked `- [ ]`. If any remain, the
+  agent didn't finish — record it as **landed-incomplete** and list the
+  unchecked task numbers. Don't block the run on it, but it must show in the
+  final report.
+- Mark the change `merged` in the ledger.
+- Move to the next change.
+
+### 2c. On a conflict — STOP
+
+`git merge` reports conflicts. Do this and then halt the loop:
+
+```bash
+git diff --name-only --diff-filter=U     # the conflicted files
+```
+
+Report each conflicted file with the conflicting hunks (`file:line`), in one
+block. Then offer, via `AskUserQuestion`:
+- **I'll resolve it now, you guide** — walk the user through each conflicted
+  hunk; you make the edit they direct, then `git add` + `git commit` to
+  complete the merge, and continue the loop.
+- **Abort this merge** — `git merge --abort`, leave the base branch clean,
+  mark the change `conflict` in the ledger, and continue with the remaining
+  changes (they may still merge cleanly).
+- **Stop the whole converge** — `git merge --abort` and halt entirely so the
+  user can rework the change.
+
+Never resolve a conflict by picking a side on your own. You don't know which
+change's intent wins — the user does.
+
+## Step 3 — Update the ledger
+
+After the loop, update `sugar/changes/.parallel-run.md`:
+- Set each change's `State` to `merged`, `landed-incomplete`, `conflict`, or
+  `deferred`.
+- Set the run `Status` to `converged` (all merged) or `partial` (some
+  conflicted/deferred).
+
+The ledger is scratch state — once the user is satisfied the run is fully
+landed, it can be deleted. Don't archive it.
+
+## Step 4 — Report
+
+One block in the conversation:
+
+```
+Converged into <base>:
+  ✓ refactor-billing   merged            (billing)
+  ✓ add-jwt            merged            (auth)
+  ⚠ fix-timeout        landed-incomplete (auth, session) — tasks 3.2, 3.3 unchecked
+  ✗ <change>           conflict — aborted, needs rework
+
+Run status: partial
+Next: run /sf-review on the combined diff, then /sf-archive each merged change.
+```
+
+Then stop. Point at `/sf-review` for the combined diff and `/sf-archive` per
+change. Do NOT review, fix, or archive here.
+
+---
+
+## What NOT to do in this skill
+
+- Do NOT resolve a merge conflict by choosing a side automatically. Surface it,
+  get the user's call, then apply their resolution.
+- Do NOT continue merging after a conflict without an explicit decision. A dirty
+  index poisons every following merge.
+- Do NOT merge a branch whose build agent hasn't finished. Half-built code on
+  the base branch is worse than waiting.
+- Do NOT fast-forward. Use `--no-ff` so each change is one revertible merge
+  commit.
+- Do NOT mark a change `merged` if its tasks.md still has unchecked tasks — that
+  status is `landed-incomplete`, and the report must say so.
+- Do NOT run `/sf-review` or `/sf-archive` yourself. Convergence ends at a clean
+  (or honestly-reported partial) base branch; the user drives what's next.
+- Do NOT push or force-push. The user pushes when they're ready.

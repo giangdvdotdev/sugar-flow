@@ -16,8 +16,9 @@
 
 import { readFileSync, writeFileSync, readdirSync, mkdirSync, existsSync } from "node:fs";
 import { join, basename } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const CMD_DIR = join(ROOT, "commands");
 const PREAMBLE_DIR = join(ROOT, "preamble");
 const DIST_DIR = join(ROOT, "dist");
@@ -25,7 +26,7 @@ const DIST_COMMANDS = join(DIST_DIR, "commands");
 const DIST_SKILLS = join(DIST_DIR, "skills");
 
 const PREAMBLE_RE = /\{\{PREAMBLE:([a-z0-9-]+)\}\}/g;
-const FRONTMATTER_RE = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/;
+const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/;
 
 function loadPreamble(name: string): string {
   const path = join(PREAMBLE_DIR, `${name}.md`);
