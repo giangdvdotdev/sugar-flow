@@ -6,7 +6,7 @@ ship discipline) and [OpenSpec](https://github.com/Fission-AI/OpenSpec)
 (delta specs, tasks.md, archive merge). Standalone — no external
 dependencies beyond `bun` for the build script.
 
-Seven slash commands, no telemetry, no framework, no plugin system. Edit
+Eight slash commands, no telemetry, no framework, no plugin system. Edit
 the prose when something doesn't fit.
 
 ## The flow
@@ -18,7 +18,9 @@ plan      →  /sf-plan      sugar/changes/<name>/ with proposal, design,
 build     →  /sf-build     execute tasks.md top-to-bottom, check off boxes
 review    →  /sf-review    pre-merge audit: hazards + taste + spec
                             completeness + task completeness
-merge     →  (manual)      you commit, push, merge yourself
+ship      →  /sf-ship      merge base, run tests, version + changelog if
+                            present, commit, push, open PR
+merge     →  (manual)      you merge the PR on the host
 archive   →  /sf-archive   merge delta specs into sugar/specs/,
                             move change to sugar/changes/archive/
 ```
@@ -132,6 +134,23 @@ Four-pass audit on the diff against the base branch:
 Reports findings with `file:line` or `spec:requirement` references.
 Does not auto-fix.
 
+### `/sf-ship`
+Lands a finished, reviewed change — or any branch. A `sugar/changes/`
+directory is optional: when one applies it enriches the PR body and adds a
+tasks-complete check, but ship runs **branch-only** when there isn't one
+(a quick fix or doc tweak that never went through `/sf-plan` ships the
+same). Detects the base branch, merges it in
+(stops on a source conflict — never picks a side), runs the project's
+test command from `CLAUDE.md`, and — only if the repo already has a
+`VERSION` file and/or `CHANGELOG.md` — bumps the version (PATCH auto;
+MINOR/MAJOR confirmed) and prepends a changelog entry. Commits in
+bisectable chunks (dependencies first), re-runs tests if anything changed,
+pushes, and opens or updates a PR via `gh` with a body composed from
+`proposal.md` and the delta specs. Runs straight through; gates only on
+conflicts, test failures, and MINOR/MAJOR bumps. Does not review (that's
+`/sf-review`), does not archive or merge the PR (that's you, then
+`/sf-archive`).
+
 ### `/sf-archive`
 After merge. Merges the change's delta specs into
 `sugar/specs/<capability>/spec.md` (REMOVED → MODIFIED → ADDED, in that
@@ -158,6 +177,7 @@ sugar-flow/
 │   ├── sf-parallel.md.tmpl
 │   ├── sf-converge.md.tmpl
 │   ├── sf-review.md.tmpl
+│   ├── sf-ship.md.tmpl
 │   └── sf-archive.md.tmpl
 ├── preamble/                    # shared sections (edit these)
 │   ├── ask-user-format.md
