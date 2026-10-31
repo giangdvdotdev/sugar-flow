@@ -6,7 +6,7 @@ ship discipline) and [OpenSpec](https://github.com/Fission-AI/OpenSpec)
 (delta specs, tasks.md, archive merge). Standalone — no external
 dependencies beyond `bun` for the build script.
 
-Eight slash commands, no telemetry, no framework, no plugin system. Edit
+Nine slash commands, no telemetry, no framework, no plugin system. Edit
 the prose when something doesn't fit.
 
 ## The flow
@@ -39,6 +39,20 @@ converge  →  /sf-converge   merge the worktree branches back in order, stop
 sequential builds with N concurrent ones. `/sf-converge` replaces the manual
 merge step for that run. Both are optional — a single change still goes
 straight through `/sf-build`.
+
+`/sf-design` sits outside the pipeline. Run it anytime you want to explore how
+a screen should look before committing to it:
+
+```
+design    →  /sf-design    generate N self-contained HTML/CSS variants of a
+                            screen, open them side-by-side, iterate on your
+                            feedback, write the chosen direction to
+                            sugar/design/<slug>/design.md
+```
+
+It's standalone — it doesn't read `sugar/ideas/` or `sugar/changes/`, and
+nothing downstream requires it. When you like a direction, its `design.md`
+(direction + tokens) is a clean starting point for `/sf-idea` or `/sf-plan`.
 
 ## The sugar/ directory
 
@@ -87,6 +101,19 @@ Requires `bun` (for the ~70-line build script).
 ### `/sf-idea`
 Pressure-tests a raw idea with 5–10 framing questions, writes a one-pager
 to `sugar/ideas/<slug>.md`. Stops.
+
+### `/sf-design`
+Standalone visual brainstorm — run anytime. Grounds itself in `CLAUDE.md`
+and any `DESIGN.md`/tokens, gathers a five-part brief (who, job-to-be-done,
+what exists, flow, states), then generates N genuinely different
+**self-contained HTML/CSS** variants of a screen under
+`sugar/design/<slug>/`, builds an iframe comparison board, and auto-opens it
+in your browser. You iterate conversationally ("B's layout, A's palette,
+kill the gradient"); it regenerates the affected variants and reopens the
+board until you approve one. Converges to `design.md` (direction, rationale,
+tokens, states, rejected directions). Doesn't touch `sugar/ideas/` or
+`sugar/changes/` and nothing downstream depends on it — but its `design.md`
+is a clean starting point for `/sf-idea` or `/sf-plan`.
 
 ### `/sf-plan`
 Reads the one-pager, runs interactive eng review (data flow, interfaces,
@@ -172,6 +199,7 @@ the one source.
 sugar-flow/
 ├── commands/                    # sources (edit these)
 │   ├── sf-idea.md.tmpl
+│   ├── sf-design.md.tmpl
 │   ├── sf-plan.md.tmpl
 │   ├── sf-build.md.tmpl
 │   ├── sf-parallel.md.tmpl
@@ -199,7 +227,7 @@ description during auto-invocation.
 ## Customizing
 
 **Change how questions are asked:** edit `preamble/ask-user-format.md`.
-Affects all seven commands.
+Affects every command that uses it.
 
 **Change the change model** (directory shape, delta format, tasks
 format, archive behavior): edit `preamble/sugar-model.md`. This is the
